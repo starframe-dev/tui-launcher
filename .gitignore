@@ -1,0 +1,13 @@
+.DS_Store
+
+# Go build and test artifacts
+/bin/
+*.test
+coverage.out
+
+# Local application binaries
+/tui-launcher
+/viewer/viewer
+
+# CueTTY test captures
+/cuetty-artifacts/

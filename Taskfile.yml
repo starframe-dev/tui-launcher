@@ -1,0 +1,225 @@
+version: '3'
+
+vars:
+  BIN_DIR: bin
+  VIEWER_DIR: viewer
+  TUI_LAUNCHER: tui-launcher
+  SESSION: default
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # ===================================================================
+  # Build
+  # ===================================================================
+
+  build:
+    desc: Build all binaries
+    cmds:
+      - task: build:tui
+      - task: build:viewer
+
+  build:tui:
+    desc: Build tui-launcher binary
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -ldflags="-s -w" -o {{.BIN_DIR}}/{{.TUI_LAUNCHER}} .
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.BIN_DIR}}/{{.TUI_LAUNCHER}}"
+
+  build:viewer:
+    desc: Build viewer binary
+    dir: "{{.VIEWER_DIR}}"
+    cmds:
+      - go build -ldflags="-s -w" -o viewer .
+    sources:
+      - "**/*.go"
+    generates:
+      - "viewer"
+
+  install:
+    desc: Install binaries to GOPATH/bin
+    cmds:
+      - go install ./...
+      - cd {{.VIEWER_DIR}} && go install .
+
+  # ===================================================================
+  # Development
+  # ===================================================================
+
+  dev:
+    desc: Start viewer + tui-launcher for development
+    cmds:
+      - task: dev:viewer
+      - task: dev:tui
+
+  dev:viewer:
+    desc: Start viewer in background
+    cmds:
+      - task: build:viewer
+      - |
+        echo "Starting viewer with session '{{.SESSION}}'..."
+        cd {{.VIEWER_DIR}} && ./viewer -s {{.SESSION}} &
+    silent: true
+
+  dev:tui:
+    desc: Start tui-launcher linked to viewer
+    deps: [build:tui]
+    cmds:
+      - "{{.BIN_DIR}}/{{.TUI_LAUNCHER}} -s {{.SESSION}}"
+
+  dev:attach:
+    desc: Attach tui-launcher to existing viewer session
+    cmds:
+      - "{{.BIN_DIR}}/{{.TUI_LAUNCHER}} -s {{.SESSION}}"
+
+  # ===================================================================
+  # Code Quality
+  # ===================================================================
+
+  fmt:
+    desc: Format all Go code
+    cmds:
+      - gofmt -w .
+      - cd {{.VIEWER_DIR}} && gofmt -w .
+
+  lint:
+    desc: Run linters
+    cmds:
+      - go vet ./...
+      - cd {{.VIEWER_DIR}} && go vet ./...
+
+  check:
+    desc: Run all checks (fmt + lint + test)
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+
+  # ===================================================================
+  # Testing
+  # ===================================================================
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -v ./...
+      - cd {{.VIEWER_DIR}} && go test -v ./...
+
+  test:short:
+    desc: Run short tests only
+    cmds:
+      - go test -short ./...
+
+  test:race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./...
+
+  test:cover:
+    desc: Run tests with coverage
+    cmds:
+      - go test -cover ./...
+      - cd {{.VIEWER_DIR}} && go test -cover ./...
+
+  # ===================================================================
+  # Dependencies
+  # ===================================================================
+
+  deps:tidy:
+    desc: Tidy all Go modules
+    cmds:
+      - go mod tidy
+      - cd {{.VIEWER_DIR}} && go mod tidy
+
+  deps:update:
+    desc: Update all dependencies
+    cmds:
+      - go get -u ./...
+      - cd {{.VIEWER_DIR}} && go get -u ./...
+      - task: deps:tidy
+
+  deps:verify:
+    desc: Verify module dependencies
+    cmds:
+      - go mod verify
+      - cd {{.VIEWER_DIR}} && go mod verify
+
+  # ===================================================================
+  # Cleanup
+  # ===================================================================
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BIN_DIR}}/
+      - rm -f {{.TUI_LAUNCHER}}
+      - rm -f {{.VIEWER_DIR}}/viewer
+      - rm -f /tmp/viewer-*.sock
+
+  clean:all:
+    desc: Deep clean (artifacts + cache)
+    cmds:
+      - task: clean
+      - go clean -cache
+      - go clean -testcache
+
+  # ===================================================================
+  # Release
+  # ===================================================================
+
+  release:build:
+    desc: Build release binaries for current platform
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o {{.BIN_DIR}}/{{.TUI_LAUNCHER}}-darwin-arm64 .
+      - cd {{.VIEWER_DIR}} && GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../{{.BIN_DIR}}/viewer-darwin-arm64 .
+
+  # ===================================================================
+  # Documentation
+  # ===================================================================
+
+  docs:spec:
+    desc: Show architecture spec
+    cmds:
+      - cat SPEC.md
+
+  # ===================================================================
+  # Viewer-specific tasks
+  # ===================================================================
+
+  viewer:run:
+    desc: Run viewer standalone
+    dir: "{{.VIEWER_DIR}}"
+    cmds:
+      - go run . -s {{.SESSION}}
+
+  viewer:send:
+    desc: "Send command to viewer (usage: task viewer:send CMD='echo hello')"
+    dir: "{{.VIEWER_DIR}}"
+    cmds:
+      - go run . -s {{.SESSION}} send-cmd '{{.CMD}}'
+
+  # ===================================================================
+  # Aliases
+  # ===================================================================
+
+  b:
+    desc: Alias for build
+    cmds:
+      - task: build
+
+  d:
+    desc: Alias for dev
+    cmds:
+      - task: dev
+
+  t:
+    desc: Alias for test
+    cmds:
+      - task: test
